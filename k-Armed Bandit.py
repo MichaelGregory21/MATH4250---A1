@@ -1,8 +1,6 @@
 import random
 import matplotlib.pyplot as plt
 import numpy as np
-from scipy.stats import norm
-import seaborn as sns
 
 '''
 A Bandit is a slot machine which can give an agent a random reward sampled from a normal distrbution centered at the given mean
@@ -304,8 +302,8 @@ class Train:
     @param boolean return_percent Set this to True if you want the average, percent optimal choice over time. False if you want the average reward of the agents over time
     @return list, list The average reward of the agents over time, The average, percent optimal choice over time
     '''
-    def train_agents(self, epsilon, initial_expectation=0, update_rule=lambda n: 0 if n==0 else 1/n, grad_shift=None, perm_prob=0, perm_step=None, new_bandits_prob=0, new_bandits_step=None, return_percent=False):
-        np.random.seed(0) # Set constant seed for consistent reproduciblity of results
+    def train_agents(self, epsilon, initial_expectation=0, update_rule=lambda n: 0 if n==0 else 1/n, grad_shift=None, perm_prob=0, perm_step=None, new_bandits_prob=0, new_bandits_step=None, return_percent=False, seed=0):
+        np.random.seed(seed) # Set constant seed for consistent reproduciblity of results
         
         if type(return_percent) != bool: raise TypeError("Expected boolean parameter return_percent")
         if type(epsilon) in [int, float]: # If epsilon is given as a constant, define constant function for concise code
@@ -547,9 +545,22 @@ def fig14():
 
     train.show_plot(title="Percent of Optimal Choice With Abrupt Change and Forgetful Update Rule", xaxis="Time", yaxis="Percent of Agents Which Made Optimal Choice")
 
+def fig15():
+    train = Train(iterations=1000)
+    results = [[],[],[]]
+    for i in range(1000):
+        results[0].append(train.train_agents(epsilon=0.01, grad_shift=lambda m,t:m+np.random.normal(scale=0.01), initial_expectation=50, seed=i)[-1])
+        results[1].append(train.train_agents(epsilon=0.01, grad_shift=lambda m,t:m+np.random.normal(scale=0.01), seed=i, update_rule=0.1)[-1])
+        results[2].append(train.train_agents(epsilon=0.1, grad_shift=lambda m,t:m+np.random.normal(scale=0.01), seed=i)[-1])
+        print(i / 100)
 
 
-
+    fig, ax = plt.subplots(figsize=(10, 7))
+    plt.boxplot(results, showfliers=False)
+    plt.title("Terminal Reward After 1000 Steps")
+    plt.ylabel("Rewards")
+    ax.set_xticklabels(["optimistic", "forgetful", "greedy"])
+    plt.show()
 
 
 
@@ -563,7 +574,7 @@ def fig14():
 # Uncomment methods you want to run and comment those which you do not
 # Displays figure according to juxtaposed number
 def main():
-    fig1()
+##    fig1()
 ##    fig2()
 ##    fig3()
 ##    fig4()
@@ -577,7 +588,7 @@ def main():
 ##    fig12()
 ##    fig13()
 ##    fig14()
-
+##    fig15()
 
 
     
