@@ -19,6 +19,7 @@ def main():
 \##    fig12()  
 \##    fig13()  
 \##    fig14()  
+\##    fig15()
 
 Which will display fig1. For example, to display fig7, comment out 'fig1()' and uncomment 'fig7()':
 
@@ -37,5 +38,6 @@ def main():
 \##    fig12()  
 \##    fig13()  
 \##    fig14()  
+\##    fig15()
 
-Some figures may take time to display while others should appear almost immediately. The number of each method corresponds to the figure in the paper.
+Some figures may take time to display while others should appear almost immediately. In particular, figure 15 may take several hours to generate. The number of each method corresponds to the figure in the paper.
