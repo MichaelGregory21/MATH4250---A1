@@ -1,10 +1,11 @@
 import random
 import matplotlib.pyplot as plt
-from numpy import random
 import numpy as np
+from scipy.stats import norm
+import seaborn as sns
 
 '''
-A Bandit is a slot machine which can give an agent a random reward sampled from a gaussian distrbution centered at the given mean
+A Bandit is a slot machine which can give an agent a random reward sampled from a normal distrbution centered at the given mean
 A Bandit comes equipped with a method that returns an estimated reward based on all previous rewards given equal weight
 '''
 class Bandit:
@@ -30,7 +31,7 @@ class Bandit:
     '''
     def spin(self):
         self._spins += 1
-        score = random.normal(loc=self._mean, scale=self._DEVIATION)
+        score = np.random.normal(loc=self._mean, scale=self._DEVIATION)
         self.adjust_estimate(score, self._update_rule)
         self._prev_reward = score
         return score
@@ -68,7 +69,39 @@ class Bandit:
         plt.title(title)
         plt.xlabel(xlabel)
         plt.ylabel(ylabel)
+        plt.grid(True)
+        self.show_plot(title, xlabel, ylabel)
+
+    '''
+    Plot this bandits mean value with respect to time according to the given function
+    @param lambda shift The function according to which the bandit mean will be altered. Identity, by default.
+    @param int steps The number of steps you want to plot. 2000, by default.
+    @param str label The label of this bandits plot. None, by default
+    @param str color The color of the plot. 'r' (red), by default.
+    '''
+    def plot_bandit_mean(self, shift=lambda m: m, steps=2000, label=None, color='r'):
+        values = [self._mean]
+        for _ in range(steps):
+            self._mean = shift(self._mean)
+            values.append(self._mean)
+        x_values = list(range(steps + 1))
+        plt.plot(x_values, values, marker='o', markersize=2, linestyle='', color=color, label=label)
+        plt.grid(True)
+
+    '''
+    Show the plot designed by this bandit
+    @param str title The title of the plot
+    @param str xaxis The label on the x axis of the plot
+    @param str yaxis The label on the y axis of the plot
+    @param str legend_loc The location of the legend of the plot. "upper left", by default.
+    '''
+    def show_plot(self, title, xaxis, yaxis, legend_loc="upper left"):
+        plt.title(title)
+        plt.xlabel(xaxis)
+        plt.ylabel(yaxis)
+        plt.legend(loc=legend_loc, fontsize=13)
         plt.show()
+
 
     '''
     Mutator for the mean of this bandit
@@ -97,7 +130,7 @@ class Environment:
     @param lambda alpha The update rule when estimating the reward associated with a bandit. 1/n (uniform average), by default
     '''
     def __init__(self, bandit_range_variance=1, num_bandits=10, initial_estimate=0, alpha=lambda n: 0 if n==0 else 1/n):
-        self._bandits = [Bandit(abs(random.normal(scale=bandit_range_variance**2)), expected=initial_estimate, alpha=alpha)
+        self._bandits = [Bandit(np.random.normal(scale=bandit_range_variance**2), expected=initial_estimate, alpha=alpha)
                          for i in range(num_bandits)]
 
     '''
@@ -105,17 +138,23 @@ class Environment:
     @param str title The title of the plot. "Sampled Reward Distribution for Each Bandit", by default
     @param str xlabel The x axis label of the plot. "Bandit", by default
     @param str ylabel The y axis label of the plot. "Reward", by default
-    @param int samples The number of samples from each bandit. 100, by default
+    @param int samples The number of samples from each bandit. 1000, by default
     '''
-    def plot_bandits(self, title="Sampled Reward Distribution for Each Bandit", xlabel="Bandit", ylabel="Reward", samples=100):
-        data = [np.random.normal(bandit.getMean(), Bandit._DEVIATION, size=samples) for bandit in self]
-        plt.violinplot(data, showmeans=True)
-        plt.title(title)
+    def plot_bandits(self, title="Sampled Reward Distribution for Each Bandit", xlabel="Bandit", ylabel="Reward", samples=1000, permute=False):
+        data = [(bandit.getMean(), np.random.normal(bandit.getMean(), Bandit._DEVIATION, size=samples)) for bandit in self]
+        if permute: random.shuffle(data)
+        plt.figure(figsize=(8,6))
+        violin_parts = plt.violinplot([i[1] for i in data], showmeans=True)
+        for j in range(len(data)):
+            x_coord = j + 1
+            y_coord = data[j][0]
+            plt.text(x_coord, y_coord, f'{y_coord:.2f}', ha='center', va='bottom')
+        plt.title(title, fontsize=16)
         plt.xlabel(xlabel)
         plt.ylabel(ylabel)
+        plt.grid(True)
         plt.show()
-
-                        
+                                        
     '''
     Accessor for bandits at the given index
     @param int key The index of the bandit you want to access
@@ -141,7 +180,7 @@ class Environment:
         return len(self._bandits)
 
 '''
-An Action is a choice of a bandit by a given agent. It may return a reward and determine whether the action was optimal
+An Action is a choice of a bandit by a given agent. It can return a reward and determine whether the action was optimal
 '''
 class Action:
     '''
@@ -160,7 +199,7 @@ class Action:
     @return true if this action was the most likely to return the highest reward. false, otherwise
     '''
     def isOptimal(self):
-        return self._agent.getEnvironment()[self._index].getMean() == max([bandit.getMean() for bandit in self._agent.getEnvironment()])
+        return all([self._agent.getEnvironment()[self._index].getMean() >= bandit.getMean() for bandit in self._agent.getEnvironment()])
 
     '''
     Get the reward from taking this action
@@ -201,7 +240,7 @@ class Agent:
     Choose an action based on policy determined by this agents value of epsilon
     @return Action An action based on the policy of this agent
     '''
-    def act(self):
+    def createAction(self):
         if random.random() < self._epsilon:
             return self.explore()
         else:
@@ -260,10 +299,14 @@ class Train:
     @param lambda grad_shift The function by which the mean of each bandit in the environment of each agent is changed each iteration. 0, by default
     @param float perm_prob The probability that the collection of bandits will permute their mean value. 0, by default
     @param int perm_step The step at which the collection of bandits will permute their mean values. None, by default
+    @param float new_bandits_prob The probability that the collection of bandits will be giving new mean values. 0, by default
+    @param int new_bandits_step The step at which the collectiion of bandits will be given new mean values. None by default
     @param boolean return_percent Set this to True if you want the average, percent optimal choice over time. False if you want the average reward of the agents over time
     @return list, list The average reward of the agents over time, The average, percent optimal choice over time
     '''
-    def train_agents(self, epsilon, initial_expectation=0, update_rule=lambda n: 0 if n==0 else 1/n, grad_shift=None, perm_prob=0, perm_step=None, return_percent=False):
+    def train_agents(self, epsilon, initial_expectation=0, update_rule=lambda n: 0 if n==0 else 1/n, grad_shift=None, perm_prob=0, perm_step=None, new_bandits_prob=0, new_bandits_step=None, return_percent=False):
+        np.random.seed(0) # Set constant seed for consistent reproduciblity of results
+        
         if type(return_percent) != bool: raise TypeError("Expected boolean parameter return_percent")
         if type(epsilon) in [int, float]: # If epsilon is given as a constant, define constant function for concise code
             temp = epsilon
@@ -271,21 +314,21 @@ class Train:
         if type(update_rule) in [int, float]: # If update_rule is given as a constant, define constant function for concise code
             temp = update_rule
             update_rule = lambda x : temp
-            
+
         average_reward = self._iterations * [0] # Average rewards initialized
         percent_optimal = self._iterations * [0] # Percent optimal initialized
         
         for i in range(self._num_agents):
-            
             environment = Environment(bandit_range_variance=1, num_bandits=self._num_bandits, initial_estimate=initial_expectation, alpha=update_rule)
             agent = Agent(epsilon(0), environment)
             for time in range(self._iterations):
                 agent.setEpsilon(epsilon(time)) # Change epsilon according to the given function
-                action = agent.act() # The agent chooses an action
+                action = agent.createAction() # The agent chooses an action
                 if grad_shift != None: self.grad_shift(environment, grad_shift, time) # Gradually shift the mean of each bandit
                 if random.random() < perm_prob or time == perm_step: self.permute_means(environment) # Permute the mean values
-                average_reward[time] = (1 / i) * action.getReward() + ((i-1) / i) * average_reward[time] if i != 0 else action.getReward() # Track reward and keep average
-                percent_optimal[time] = (1 / (i+1)) * int(action.isOptimal()) + (i / (i+1)) * percent_optimal[time] # Track percentage of agents which made the optimal choice over time
+                if random.random() < new_bandits_prob or time == new_bandits_step: self.new_bandits(environment) # Set new means
+                average_reward[time] = (1 / (i+1)) * action.getReward() + ((i-1) / i) * average_reward[time] if i != 0 else action.getReward() # Track reward and keep average
+                if return_percent: percent_optimal[time] = (1 / i) * int(action.isOptimal()) + ((i-1) / i) * percent_optimal[time] if i!= 0 else int(action.isOptimal()) # Track percentage of agents which made the optimal choice over time
         if return_percent: return percent_optimal       
         return average_reward
     
@@ -312,7 +355,7 @@ class Train:
         plt.title(title)
         plt.xlabel(xaxis)
         plt.ylabel(yaxis)
-        plt.legend(loc=legend_loc)
+        plt.legend(loc=legend_loc, fontsize=13)
 
     '''
     Shift the mean of each bandit in the given environment according to the given function
@@ -332,17 +375,212 @@ class Train:
         random.shuffle(means)
         for bandit, mean in zip(list(environment), means):
             bandit.setMean(mean)
-                
-        
-        
+
+    '''
+    Change the mean values associated with the bandits in the given enironment
+    @param Environment environment The environment in which the bandits are to be altered
+    '''
+    def new_bandits(self, environment):
+        for bandit in list(environment):
+            bandit.setMean(np.random.normal())
+
+
+
+
+
+
+'''
+Example Environment distributions
+'''
+def fig1():
+    np.random.seed(10)
+    env = Environment()
+    env.plot_bandits()
+
+'''
+Example Bandit distribution
+'''
+def fig2():
+    np.random.seed(10)
+    mean=np.random.normal()
+    bandit = Bandit(mean)
+    bandit.plot_rewards()
+    print(mean)
+
+
+"""
+Compare average rewards from values of epsilon: 0.1, 0.2, 0.01, 1, 0
+"""
+def fig3():
+    train = Train()
+    
+    train.plot(train.train_agents(epsilon=0.1),label="epsilon=0.1")
+    train.plot(train.train_agents(epsilon=0.2),label="epsilon=0.2")
+    train.plot(train.train_agents(epsilon=0.01),label="epsilon=0.01")
+    train.plot(train.train_agents(epsilon=1),label="epsilon=1")
+    train.plot(train.train_agents(epsilon=0),label="epsilon=0")
+
+    train.show_plot(title="Average Reward Over Time", xaxis="Time", yaxis="Reward")
+
+'''
+Declare epsilon as a function of time. Show plot as percent of optimal choice over time
+'''
+def fig4():
+    train = Train()
+    
+    train.plot(train.train_agents(epsilon=0.1, return_percent=True),label="epsilon=0.1")
+    train.plot(train.train_agents(epsilon=lambda t:(50/(t+1)), return_percent=True),label="epsilon=(50/t)")
+
+    train.show_plot(title="Percent of Optimal Choice Over Time", xaxis="Time", yaxis="Percent of Agents Which Made Optimal Choice")
+
+'''
+Compare optimistic and pessimistic initial assumptions
+'''
+def fig5():
+    train = Train()
+    
+    train.plot(train.train_agents(epsilon=0.01, return_percent=True), label="Pessimistic")
+    train.plot(train.train_agents(epsilon=0.01, initial_expectation=50, return_percent=True), label="Optimistic")
+
+    train.show_plot(title="Comparing Different Initial Assumptions", xaxis="Time", yaxis="Percent of Agents Which Made Optimal Choice")
+
+'''
+Display gradually shifting Bandit mean value
+'''
+def fig6():
+    np.random.seed(0)
+    bandit = Bandit(mean=np.random.normal())
+    bandit.plot_bandit_mean(shift=lambda m:m+np.random.normal(scale=0.01))        
+    bandit.show_plot(title='Mean Value of Bandit Rewards Over Time', xaxis='Time', yaxis='Mean Value', legend_loc="upper left")
+
+'''
+Compare values of epsilon with a gradual change to bandit mean rewards
+'''
+def fig7():
+    np.random.seed(0)
+    train = Train()
+
+    train.plot(train.train_agents(epsilon=0.1, return_percent=True, grad_shift=lambda m,t:m+np.random.normal(scale=0.01)), label="epsilon=0.1")
+    train.plot(train.train_agents(epsilon=0.2, return_percent=True, grad_shift=lambda m,t:m+np.random.normal(scale=0.01)), label="epsilon=0.2")
+    train.plot(train.train_agents(epsilon=lambda t:50/(t+1), return_percent=True, grad_shift=lambda m,t:m+np.random.normal(scale=0.01)), label="epsilon=50/t")
+
+    train.show_plot(title="Percent of Optimal Choice With Gradual Shift in Avg Rewards", xaxis="Time", yaxis="Percent of Agents Which Made Optimal Choice")
+
+'''
+Compare values of epsilon with a gradual change to bandit mean rewards
+'''
+def fig8():
+    np.random.seed(0)
+    train = Train()
+
+    train.plot(train.train_agents(epsilon=0.1, return_percent=True, grad_shift=lambda m,t:m+np.random.normal(scale=0.01)), label="epsilon=0.1")
+    train.plot(train.train_agents(epsilon=0.2, return_percent=True, grad_shift=lambda m,t:m+np.random.normal(scale=0.01)), label="epsilon=0.2")
+    train.plot(train.train_agents(epsilon=lambda t:0.05 + 50/(t+1), return_percent=True, grad_shift=lambda m,t:m+np.random.normal(scale=0.01)), label="epsilon=0.05 + (50/t)")
+
+    train.show_plot(title="Percent of Optimal Choice With Gradual Shift in Avg Rewards", xaxis="Time", yaxis="Percent of Agents Which Made Optimal Choice")
+    
+'''
+Compare forgetful update rule with gradual change to bandit mean rewards
+'''
+def fig9():
+    np.random.seed(0)
+    train = Train()
+
+    train.plot(train.train_agents(epsilon=lambda t:50/(t+1), return_percent=True, update_rule=0.1, grad_shift=lambda m,t:m+np.random.normal(scale=0.01)), label="epsilon=50/t, Forgetful Step Size")
+    train.plot(train.train_agents(epsilon=lambda t:50/(t+1), return_percent=True, grad_shift=lambda m,t:m+np.random.normal(scale=0.01)), label="epsilon=50/t, Averaging Rule")
+
+    train.show_plot(title="Percent of Optimal Choice With Gradual Shift and Forgetful Update Rule", xaxis="Time", yaxis="Percent of Agents Which Made Optimal Choice")
+
+'''
+Display mean reverting gradually shifting bandit mean values
+'''
+def fig10():
+    np.random.seed(0)
+    bandit = Bandit(mean=np.random.normal())
+    bandit.plot_bandit_mean(shift=lambda m:(0.5 * m)+np.random.normal(scale=0.01), label="kappa=0.5")
+    np.random.seed(0)
+    bandit.setMean(np.random.normal())
+    bandit.plot_bandit_mean(shift=lambda m:(0.99 * m)+np.random.normal(scale=0.01), color='b', label="kappa=0.99")
+    bandit.show_plot(title='Mean Value of Bandit Rewards Over Time', xaxis='Time', yaxis='Mean Value', legend_loc="upper left")
+
+'''
+Compare values of epsilon with abrupt change to bandit mean rewards
+'''
+def fig11():
+    np.random.seed(0)
+    train = Train()
+    kappa = 0.99
+
+    train.plot(train.train_agents(epsilon=lambda t:50/(t+1), return_percent=True, update_rule=0.1, grad_shift=lambda m,t:(kappa * m)+np.random.normal(scale=0.01)), label="epsilon=50/t, Forgetful Step Size")
+    train.plot(train.train_agents(epsilon=0.1, return_percent=True, update_rule=0.1, grad_shift=lambda m,t: (kappa * m)+np.random.normal(scale=0.01)), label="epsilon=0.1, Forgetful Step Size")
+    train.plot(train.train_agents(epsilon=0.2, return_percent=True, update_rule=0.1, grad_shift=lambda m,t: (kappa * m)+np.random.normal(scale=0.01)), label="epsilon=0.2, Forgetful Step Size")
+
+
+    train.show_plot(title="Mean Reverting Change with Forgetful Update Rule", xaxis="Time", yaxis="Percent of Agents Which Made Optimal Choice")
+
+'''
+Show permuted environment
+'''
+def fig12():
+    np.random.seed(10)
+    env = Environment()
+    env.plot_bandits(permute=True, title="Sampled Reward Distribution for Each Bandit After Permutation")
+    
+'''
+Try to optimize values of epsilon with abrupt change to bandit mean rewards
+'''
+def fig13():
+    train = Train()
+
+    train.plot(train.train_agents(epsilon=lambda t:(50/(t+1)), return_percent=True, perm_step=1000, update_rule=0.1), label="epsilon=(50/t)")
+    train.plot(train.train_agents(epsilon=0.1, return_percent=True, perm_step=1000, update_rule=0.1), label="epsilon=0.1")
+
+    train.show_plot(title="Percent of Optimal Choice With Abrupt Change and Forgetful Update Rule", xaxis="Time", yaxis="Percent of Agents Which Made Optimal Choice")
+
+'''
+Specially tuned epsilon assignment
+'''
+def fig14():
+    train = Train()
+
+    train.plot(train.train_agents(epsilon=lambda t: 1 if 1000 <= t <= 1050 else 0.05 + 50/(t+1), return_percent=True, perm_step=1000, update_rule=0.1), label="epsilon=e_t")
+
+    train.show_plot(title="Percent of Optimal Choice With Abrupt Change and Forgetful Update Rule", xaxis="Time", yaxis="Percent of Agents Which Made Optimal Choice")
+
+
+
+
+
+
+
+
+
+
+
+
 
 # Main script to be run
+# Uncomment methods you want to run and comment those which you do not
+# Displays figure according to juxtaposed number
 def main():
-    train = Train(num_agents=1000, iterations=2000)
-    train.plot(train.train_agents(0.1, update_rule=lambda t:0.1, perm_step=1000), "update rule: constant")
-    train.plot(train.train_agents(0.1, update_rule=lambda t:1/(t+1), perm_step=1000), "update rule: average")
-    train.show_plot("Average Reward over Iterations", "Iterations", "Average Reward")
+    fig1()
+##    fig2()
+##    fig3()
+##    fig4()
+##    fig5()
+##    fig6()
+##    fig7()
+##    fig8()
+##    fig9()
+##    fig10()
+##    fig11()
+##    fig12()
+##    fig13()
+##    fig14()
 
+
+
+    
 # Run program
 if __name__ == "__main__":
     main()
